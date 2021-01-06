@@ -1,121 +1,185 @@
 import { Request, Response } from 'express';
+import { Types } from 'mongoose';
+import Products from '../../db/schemas/product';
+import { sendError, validateObjectId } from '../../utils/response_utils';
 
-import { products, Product } from '../../data/products';
-
-export const getProducts = (req: Request, res: Response): void => {
-  const itemsPerPage: number = 3;
+export const getProducts = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const itemsPerPage: number = 20;
   const page: number = parseInt(req.query.page as string);
   const start = (page - 1) * itemsPerPage;
-  const total: number = products.length;
-  const end: number = page * itemsPerPage;
+  const total: number = await Products.count();
+  // const end: number = page * itemsPerPage;
 
-  // console.log("start", start);
-  // console.log("total", total);
-  // console.log("end", end > total ? total : end);
+  const products = await Products.find().skip(start).limit(itemsPerPage);
 
   res.send({
     page: page,
     per_page: itemsPerPage,
     total: total,
     total_pages: Math.ceil(total / itemsPerPage),
-    data: products.slice(start, end),
+    data: products,
   });
 };
 
-export const getProductById = (req: Request, res: Response): void => {
-  const { productId } = req.params;
-  const index: number = products.findIndex(
-    (item) => item.id === parseInt(productId)
-  );
-  if (index !== -1) {
-    res.send({ data: products[index] });
-  } else {
-    res.status(404).send({});
+export const getProductById = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { productId } = req.params;
+    validateObjectId(productId);
+
+    const product = await Products.findById(productId).populate({
+      path: 'user',
+      select: {
+        password: 0,
+        __v: 0,
+      },
+    });
+
+    if (product) {
+      res.send({ data: product });
+    } else {
+      res.status(404).send({});
+    }
+  } catch (e) {
+    sendError(res, e);
   }
 };
 
-export const createProduct = (req: Request, res: Response): void => {
-  const { name, year, color, pantone_value }: Product = req.body;
-  const newProduct: Product = {
-    id: products.length + 1,
-    name, // name: name
-    year,
-    color,
-    pantone_value,
-  };
-
-  products.push(newProduct);
-  res.send(newProduct);
-};
-
-export const updateProduct = (req: Request, res: Response): void => {
-  const id: number = parseInt(req.params.productId);
-  const { name, year, color, pantone_value }: Product = req.body;
-  const index: number = products.findIndex((item) => item.id === id);
-  if (index !== -1) {
-    products[index] = {
-      id,
+export const createProduct = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { name, year, description, price, user } = req.body;
+    validateObjectId(user);
+    const product = await Products.create({
       name,
       year,
-      color,
-      pantone_value,
-    };
-    res.send({ data: products[index] });
-  } else {
-    res.status(404).send({});
+      description,
+      price,
+      user,
+    });
+    res.send(product);
+  } catch (e) {
+    sendError(res, e);
   }
 };
 
-export const partialUpdateProduct = (req: Request, res: Response): void => {
-  const productId: number = parseInt(req.params.productId);
-  const { id, name, year, color, pantone_value }: Product = req.body;
-  const index: number = products.findIndex((item) => item.id === productId);
-  if (index !== -1) {
-    const product = products[index];
+export const updateProduct = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const id: string = req.params.productId;
+    validateObjectId(id);
+    const { name, year, description, price, user } = req.body;
+    if (user) {
+      validateObjectId(user);
+    }
+    const updatedProduct = await Products.findByIdAndUpdate(id, {
+      name,
+      year,
+      description,
+      price,
+      user,
+    });
 
-    products[index] = {
-      id: id || product.id,
-      name: name || product.name,
-      year: year || product.year,
-      color: color || product.color,
-      pantone_value: pantone_value || product.pantone_value,
-    };
-
-    res.send({ data: products[index] });
-  } else {
-    res.status(404).send({});
+    if (updatedProduct) {
+      res.send({ data: 'OK' });
+    } else {
+      res.status(404).send({});
+    }
+  } catch (e) {
+    sendError(res, e);
   }
 };
 
-export const updateProductAndNotify = (req: Request, res: Response): void => {
-  const productId: number = parseInt(req.params.productId);
-  const { client, data } = req.body;
-  const { id, name, year, color, pantone_value }: Product = data;
-  const index: number = products.findIndex((item) => item.id == productId);
-  if (index !== -1) {
-    const product = products[index];
+export const partialUpdateProduct = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const productId = req.params.productId;
+    validateObjectId(productId);
+    const { name, year, description, price, user } = req.body;
+    if (user) {
+      validateObjectId(user);
+    }
+    const product = await Products.findById(productId);
 
-    products[index] = {
-      id: id || product.id,
-      name: name || product.name,
-      year: year || product.year,
-      color: color || product.color,
-      pantone_value: pantone_value || product.pantone_value,
-    };
-
-    res.send({ data: products[index], message: `Email sent to ${client}` });
-  } else {
-    res.status(404).send({});
+    if (product) {
+      product.name = name || product.name;
+      product.year = year || product.year;
+      product.price = price || product.price;
+      product.description = description || product.description;
+      product.user = user || product.user;
+      await product.save();
+      res.send({ data: product });
+    } else {
+      res.status(404).send({});
+    }
+  } catch (e) {
+    sendError(res, e);
   }
 };
 
-export const deleteProductById = (req: Request, res: Response): void => {
-  const productId: number = parseInt(req.params.productId);
-  const index: number = products.findIndex((item) => item.id === productId);
-  if (index !== -1) {
-    products.splice(index, 1);
-    res.send({});
-  } else {
-    res.status(404).send({});
+export const updateProductAndNotify = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const productId: string = req.params.productId;
+    validateObjectId(productId);
+    const { client, data } = req.body;
+    const { name, year, description, price, user } = data;
+
+    if (user) {
+      validateObjectId(user);
+    }
+
+    const product = await Products.findById(productId);
+
+    if (product) {
+      product.name = name || product.name;
+      product.year = year || product.year;
+      product.price = price || product.price;
+      product.description = description || product.description;
+      product.user = user || product.user;
+      await product.save();
+
+      res.send({ data: product, message: `Email sent to ${client}` });
+    } else {
+      res.status(404).send({});
+    }
+  } catch (e) {
+    sendError(res, e);
+  }
+};
+
+export const deleteProductById = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const productId: string = req.params.productId;
+
+    validateObjectId(productId);
+
+    const deleted = await Products.deleteOne({
+      _id: Types.ObjectId(productId),
+    });
+
+    if (deleted.deletedCount > 0) {
+      res.send({});
+    } else {
+      res.status(404).send({});
+    }
+  } catch (e) {
+    sendError(res, e);
   }
 };
