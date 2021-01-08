@@ -1,4 +1,4 @@
-import { Schema, Document, model, ObjectId } from 'mongoose';
+import { Schema, Document, model, Types } from 'mongoose';
 import { User } from './user';
 
 interface Product extends Document {
@@ -6,7 +6,7 @@ interface Product extends Document {
   year: number;
   price?: number;
   description?: string;
-  user: ObjectId | User;
+  user: Types.ObjectId | User;
 }
 
 const schema = new Schema({

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import Products from '../../db/schemas/product';
 import { sendError, validateObjectId } from '../../utils/response_utils';
+import { validateNewProductBody } from '../../validators/v1/products-validator';
 
 export const getProducts = async (
   req: Request,
@@ -10,10 +11,14 @@ export const getProducts = async (
   const itemsPerPage: number = 20;
   const page: number = parseInt(req.query.page as string);
   const start = (page - 1) * itemsPerPage;
-  const total: number = await Products.count();
+  const total: number = await Products.count({ user: req.session.userId });
   // const end: number = page * itemsPerPage;
 
-  const products = await Products.find().skip(start).limit(itemsPerPage);
+  const products = await Products.find({
+    user: req.session.userId,
+  })
+    .skip(start)
+    .limit(itemsPerPage);
 
   res.send({
     page: page,
@@ -32,7 +37,10 @@ export const getProductById = async (
     const { productId } = req.params;
     validateObjectId(productId);
 
-    const product = await Products.findById(productId).populate({
+    const product = await Products.findOne({
+      _id: productId,
+      user: req.session.userId,
+    }).populate({
       path: 'user',
       select: {
         password: 0,
@@ -55,14 +63,16 @@ export const createProduct = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { name, year, description, price, user } = req.body;
-    validateObjectId(user);
+    const { userId } = req.session;
+    console.log(req.body);
+    const { name, year, description, price } = req.body;
+    validateObjectId(userId);
     const product = await Products.create({
       name,
       year,
       description,
       price,
-      user,
+      user: userId,
     });
     res.send(product);
   } catch (e) {
@@ -77,17 +87,21 @@ export const updateProduct = async (
   try {
     const id: string = req.params.productId;
     validateObjectId(id);
-    const { name, year, description, price, user } = req.body;
-    if (user) {
-      validateObjectId(user);
-    }
-    const updatedProduct = await Products.findByIdAndUpdate(id, {
-      name,
-      year,
-      description,
-      price,
-      user,
-    });
+    const { name, year, description, price } = req.body;
+
+    const updatedProduct = await Products.findOneAndUpdate(
+      {
+        _id: id,
+        user: req.session.userId,
+      },
+      {
+        name,
+        year,
+        description,
+        price,
+        user: req.session.userId,
+      }
+    );
 
     if (updatedProduct) {
       res.send({ data: 'OK' });
@@ -106,18 +120,17 @@ export const partialUpdateProduct = async (
   try {
     const productId = req.params.productId;
     validateObjectId(productId);
-    const { name, year, description, price, user } = req.body;
-    if (user) {
-      validateObjectId(user);
-    }
-    const product = await Products.findById(productId);
+    const { name, year, description, price } = req.body;
+    const product = await Products.findOne({
+      _id: productId,
+      user: req.session.userId,
+    });
 
     if (product) {
       product.name = name || product.name;
       product.year = year || product.year;
       product.price = price || product.price;
       product.description = description || product.description;
-      product.user = user || product.user;
       await product.save();
       res.send({ data: product });
     } else {
@@ -136,20 +149,18 @@ export const updateProductAndNotify = async (
     const productId: string = req.params.productId;
     validateObjectId(productId);
     const { client, data } = req.body;
-    const { name, year, description, price, user } = data;
+    const { name, year, description, price } = data;
 
-    if (user) {
-      validateObjectId(user);
-    }
-
-    const product = await Products.findById(productId);
+    const product = await Products.findOne({
+      _id: productId,
+      user: req.session.userId,
+    });
 
     if (product) {
       product.name = name || product.name;
       product.year = year || product.year;
       product.price = price || product.price;
       product.description = description || product.description;
-      product.user = user || product.user;
       await product.save();
 
       res.send({ data: product, message: `Email sent to ${client}` });
@@ -168,10 +179,11 @@ export const deleteProductById = async (
   try {
     const productId: string = req.params.productId;
 
-    validateObjectId(productId);
+    // validateObjectId(productId);
 
     const deleted = await Products.deleteOne({
-      _id: Types.ObjectId(productId),
+      _id: productId,
+      user: req.session.userId,
     });
 
     if (deleted.deletedCount > 0) {

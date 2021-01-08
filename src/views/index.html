@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MEEDU.APP</title>
+  </head>
+  <body>
+    <form
+      id="login-form"
+      action="http://localhost:5000/api/v1/users/login"
+      method="POST"
+    >
+      <button type="submit">SEND</button>
+    </form>
+
+    <script>
+      var formElement = document.getElementById('login-form');
+      formElement.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+
+        var request = new XMLHttpRequest();
+        request.open('POST', 'http://localhost:5000/api/v1/users/login');
+        request.setRequestHeader("Content-Type","application/json")
+        request.onload = function (_) {
+          if (request.status === 200) {
+            console.log(request.responseText);
+          } else {
+            console.log(request.status);
+          }
+        };
+        request.send(
+          JSON.stringify({ email: 'test@test.com', password: '12345' })
+        );
+      });
+    </script>
+  </body>
+</html>
